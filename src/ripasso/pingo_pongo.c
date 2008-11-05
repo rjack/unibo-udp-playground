@@ -3,6 +3,9 @@
  *
  * uso:
  * pingo_pongo -l indirizzo:porta -r indirizzo:porta
+ *
+ * TODO permettere invocazioni :porta per intendere localhost:porta
+ * TODO interrogazione DNS
  */
 
 #include <arpa/inet.h>
@@ -115,7 +118,4 @@ print_usage (FILE *out, const char *program_name)
 			program_name);
 	fprintf (out, "dove gli indirizzi hanno forma ip:porta\n");
 	fprintf (out, "\n");
-	fprintf (out, "Le seguenti invocazioni sono equivalenti:\n");
-	fprintf (out, "  %s :1234 :4567\n", program_name);
-	fprintf (out, "  %s 127.0.0.1:1234 127.0.0.1:4567\n", program_name);
 }
