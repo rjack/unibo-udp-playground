@@ -20,6 +20,17 @@
 
 
 /****************************************************************************
+				     Tipi
+****************************************************************************/
+
+struct chan {
+	struct sockaddr_in ch_locaddr;
+	struct sockaddr_in ch_remaddr;
+
+
+};
+
+/****************************************************************************
 			  Prototipi funzioni private
 ****************************************************************************/
 
@@ -38,23 +49,34 @@ new_addr_from_str (const char *string);
 int
 main (const int argc, const char **argv)
 {
-	int i, j;
-	struct sockaddr_in *addr[2];
+	int i;
+	struct chan *local;
+	struct chan *remote;
 
-	if (argc != 3) {
+	struct addrinfo local_hints;
+	struct addrinfo remote_hints;
+
+	if (argc != 5) {
 		print_usage (stderr, argv[0]);
 		exit (EXIT_FAILURE);
 	}
 
-	for (i = 0, j = i + 1; i < argc - 1; i++, j++) {
-		addr[i] = new_addr_from_str (argv[j]);
-		if (addr[i] == NULL) {
-			fprintf (stderr, "%s non e' una coppia "
-			                 "indirizzo:porta valida.\n",
-			                 argv[j]);
-			exit (EXIT_FAILURE);
-		}
+	local_chan = new_listening_chan (argv[1], argv[2], &local_hints);
+	if (local_chan == NULL) {
+		perror ("[server] error");
+		exit (EXIT_FAILURE);
 	}
+
+	remote_chan = new_connecting_chan (argv[3], argv[4], &remote_hints);
+	if (local_chan == NULL) {
+		perror ("[client] error");
+		exit (EXIT_FAILURE);
+	}
+
+	select_loop (local, remote);
+
+	free_chan (local_chan);
+	free_chan (remote_chan);
 
 	return 0;
 }
@@ -64,46 +86,17 @@ main (const int argc, const char **argv)
 			       Funzioni private
 ****************************************************************************/
 
-static struct sockaddr_in *
-new_addr_from_str (const char *string)
+static struct chan*
+new_connecting_chan (const char *name, const char *service,
+                     const struct addrinfo *hints)
 {
-	int ok = 0;
-	char *ip_str = NULL;
-	char *port_str = NULL;
-	struct sockaddr_in *addr = NULL;
+	struct chan *nc;
 
-	/* ip_str duplica string */
-	ip_str = malloc ((strlen (string) + 1) * sizeof(*string));
-	if (ip_str == NULL)
-		goto error;
-	if (!strcpy (ip_str, string))
-		goto error;
+	nc = (struct chan *) malloc (sizeof(*nc));
+	if (nc == NULL)
+		return NULL;
 
-	/* port_str punta in mezzo a ip_str */
-	port_str = strchr (ip_str, ':');
-	if (port_str == NULL)
-		goto error;
-	*port_str = '\0';
-	port_str++;
-
-	/* allocazione sockaddr_in */
-	addr = (struct sockaddr_in *) calloc (1, sizeof(*addr));
-	if (addr == NULL)
-		goto error;
-
-	/* parsing ip */
-	ok = inet_pton (AF_INET, ip_str, &(addr->sin_addr));
-	if (!ok)
-		goto error;
-
-	return addr;
-
-error:
-	if (addr != NULL)
-		free (addr);
-	if (ip_str != NULL)
-		free (ip_str);
-	return NULL;
+	return nc;
 }
 
 
@@ -113,9 +106,10 @@ print_usage (FILE *out, const char *program_name)
 	assert (out != NULL);
 	assert (program_name != NULL);
 
-	fprintf (out, "uso:\n");
-	fprintf (out, "  %s INDIRIZZO_LOCALE INDIRIZZO_REMOTO\n",
-			program_name);
-	fprintf (out, "dove gli indirizzi hanno forma ip:porta\n");
-	fprintf (out, "\n");
+	fprintf (out, "uso:\n"
+	              "  %s INDIRIZZO_LOCALE PORTA_LOCALE INDIRIZZO_REMOTO "
+	              "PORTA_REMOTA\n"
+		      "\n"
+		      "\"localhost\" e \"127.0.0.x\" possono essere "
+		      "specificati con \"-\"\n", program_name);
 }
