@@ -44,14 +44,14 @@ main (const int argc, const char *argv[])
 
 	outaddr_len = sizeof(outaddr);
 	memset (&outaddr, 0, outaddr_len);
-	outaddr.sin_family = PF_INET;
+	outaddr.sin_family = AF_INET;
 	outaddr.sin_addr.s_addr = htonl (BIND_ADDRESS);
 	outaddr.sin_port = htons (BIND_PORT);
 
 	remoteaddr_len = sizeof(remoteaddr);
 	memset (&remoteaddr, 0, remoteaddr_len);
-	remoteaddr.sin_family = PF_INET;
-	err = inet_pton (PF_INET, REMOTE_ADDRESS, &remoteaddr.sin_addr);
+	remoteaddr.sin_family = AF_INET;
+	err = inet_pton (AF_INET, REMOTE_ADDRESS, &remoteaddr.sin_addr);
 	if (err != 1) {
 		perror ("inet_pton");
 		goto inet_pton_err;
@@ -61,7 +61,7 @@ main (const int argc, const char *argv[])
 	/*
 	 * UDP socket creation.
 	 */
-	outfd = socket (PF_INET, SOCK_DGRAM, 0);
+	outfd = socket (AF_INET, SOCK_DGRAM, 0);
 	if (outfd == -1) {
 		perror ("socket");
 		goto socket_err;
@@ -82,8 +82,8 @@ main (const int argc, const char *argv[])
 	iov.iov_base = udp_pld;
 	iov.iov_len = udp_pld_len;
 	memset (&hdr, 0, sizeof(hdr));
-	hdr.msg_name = (void *) &remoteaddr.sin_addr;
-	hdr.msg_namelen = remoteaddr_len;
+	hdr.msg_name = (void *) &remoteaddr;
+	hdr.msg_namelen = sizeof(remoteaddr);
 	hdr.msg_iov = &iov;
 	hdr.msg_iovlen = 1;
 
