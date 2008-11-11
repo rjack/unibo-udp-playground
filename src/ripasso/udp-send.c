@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 
-#define     BIND_ADDRESS     INADDR_LOOPBACK
+#define     BIND_ADDRESS     "127.0.0.1"
 #define     BIND_PORT        2020
 
 #define     REMOTE_ADDRESS   "127.0.0.1"
@@ -45,7 +45,11 @@ main (const int argc, const char *argv[])
 	outaddr_len = sizeof(outaddr);
 	memset (&outaddr, 0, outaddr_len);
 	outaddr.sin_family = AF_INET;
-	outaddr.sin_addr.s_addr = htonl (BIND_ADDRESS);
+	err = inet_pton (AF_INET, BIND_ADDRESS, &outaddr.sin_addr);
+	if (err != 1) {
+		perror ("inet_pton BIND_ADDRESS");
+		goto inet_pton_err;
+	}
 	outaddr.sin_port = htons (BIND_PORT);
 
 	remoteaddr_len = sizeof(remoteaddr);
@@ -53,7 +57,7 @@ main (const int argc, const char *argv[])
 	remoteaddr.sin_family = AF_INET;
 	err = inet_pton (AF_INET, REMOTE_ADDRESS, &remoteaddr.sin_addr);
 	if (err != 1) {
-		perror ("inet_pton");
+		perror ("inet_pton REMOTE_ADDRESS");
 		goto inet_pton_err;
 	}
 	remoteaddr.sin_port = htons (REMOTE_PORT);
