@@ -14,11 +14,23 @@
 #include <unistd.h>
 
 
-#define     BIND_ADDRESS     "127.0.0.1"
+static const char *program_name;
+
+
+#define     BIND_ADDRESS     "192.168.1.11"
 #define     BIND_PORT        2020
 
-#define     REMOTE_ADDRESS   "127.0.0.1"
+#define     REMOTE_ADDRESS   "192.128.1.250"
 #define     REMOTE_PORT      3030
+
+#define     _STR(x)          #x
+#define     STR(x)           _STR(x)
+
+void
+print_info (const char *msg)
+{
+	printf ("[INFO] %s: %s\n", program_name, msg);
+}
 
 
 int
@@ -39,6 +51,8 @@ main (const int argc, const char *argv[])
 	/*
 	 * Init vars.
 	 */
+	program_name = argv[0];
+
 	udp_pld = "Ciao, come stai?";
 	udp_pld_len = strlen (udp_pld) + 1;
 
@@ -61,7 +75,7 @@ main (const int argc, const char *argv[])
 		goto inet_pton_err;
 	}
 	remoteaddr.sin_port = htons (REMOTE_PORT);
-	
+
 	/*
 	 * UDP socket creation.
 	 */
@@ -79,6 +93,7 @@ main (const int argc, const char *argv[])
 		perror ("bind");
 		goto bind_err;
 	}
+	print_info ("binded to "BIND_ADDRESS":"STR(BIND_PORT));
 
 	/*
 	 * Fill the iovec and the msghdr.
@@ -102,7 +117,7 @@ main (const int argc, const char *argv[])
 		goto sendmsg_err;
 	}
 
-	printf ("Sent %d bytes\n", nsent);
+	print_info ("datagram sent to "REMOTE_ADDRESS":"STR(REMOTE_PORT));
 
 	/* Happy ending :) */
 	return 0;
