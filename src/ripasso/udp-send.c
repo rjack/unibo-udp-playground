@@ -20,7 +20,7 @@ static const char *program_name;
 #define     BIND_ADDRESS     "192.168.1.11"
 #define     BIND_PORT        2020
 
-#define     REMOTE_ADDRESS   "192.128.1.250"
+#define     REMOTE_ADDRESS   "192.128.1.100"
 #define     REMOTE_PORT      3030
 
 #define     _STR(x)          #x
@@ -40,7 +40,8 @@ main (const int argc, const char *argv[])
 	int outfd;
 	char *udp_pld;
 	struct iovec iov;
-	struct msghdr hdr;
+	struct msghdr outhdr;
+	struct msghdr inhdr;
 	size_t udp_pld_len;
 	struct sockaddr_in outaddr;
 	struct sockaddr_in remoteaddr;
@@ -96,21 +97,33 @@ main (const int argc, const char *argv[])
 	print_info ("binded to "BIND_ADDRESS":"STR(BIND_PORT));
 
 	/*
+	 * Set the IP_RECVERR option.
+	 */
+	/* XXX `err' used as optval. */
+	err = 1;
+	err = setsockopt (outfd, IPPROTO_IP, IP_RECVERR, &err, sizeof(err));
+	if (err) {
+		perror ("setsockopt");
+		goto setsockopt_err;
+	}
+	print_info ("IP_RECVERR option set");
+
+	/*
 	 * Fill the iovec and the msghdr.
 	 */
 	iov.iov_base = udp_pld;
 	iov.iov_len = udp_pld_len;
-	memset (&hdr, 0, sizeof(hdr));
-	hdr.msg_name = (void *) &remoteaddr;
-	hdr.msg_namelen = sizeof(remoteaddr);
-	hdr.msg_iov = &iov;
-	hdr.msg_iovlen = 1;
+	memset (&outhdr, 0, sizeof(outhdr));
+	outhdr.msg_name = (void *) &remoteaddr;
+	outhdr.msg_namelen = sizeof(remoteaddr);
+	outhdr.msg_iov = &iov;
+	outhdr.msg_iovlen = 1;
 
 	/*
 	 * Send the datagram.
 	 */
 	do {
-		nsent = sendmsg (outfd, &hdr, MSG_NOSIGNAL);
+		nsent = sendmsg (outfd, &outhdr, MSG_NOSIGNAL);
 	} while (nsent == -1 && errno == EINTR);
 	if (nsent == -1) {
 		perror ("sendmsg");
@@ -119,12 +132,21 @@ main (const int argc, const char *argv[])
 
 	print_info ("datagram sent to "REMOTE_ADDRESS":"STR(REMOTE_PORT));
 
+
+	/*
+	 * Recv a response or an error via MSG_ERRQUEUE.
+	 */
+	do {
+		nrecv = recvmsg (outfd, &inhdr, MSG_ERRQUEUE);
+	} while (nrecv == -1 && errno == EINTR);
+
 	/* Happy ending :) */
 	return 0;
 
 
 	/* Errors :( */
 sendmsg_err:
+setsockopt_err:
 bind_err:
 	close (outfd);
 
