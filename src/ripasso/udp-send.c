@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <netinet/ip.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,14 +18,16 @@
 static const char *program_name;
 
 
-#define     BIND_ADDRESS     "192.168.1.11"
+#define     BIND_ADDRESS     "127.0.0.1"
 #define     BIND_PORT        2020
 
-#define     REMOTE_ADDRESS   "192.128.1.100"
+#define     REMOTE_ADDRESS   "127.0.0.1"
 #define     REMOTE_PORT      3030
 
 #define     _STR(x)          #x
 #define     STR(x)           _STR(x)
+
+#define     INBUFLEN         100
 
 void
 print_info (const char *msg)
@@ -38,8 +41,10 @@ main (const int argc, const char *argv[])
 {
 	int err;
 	int outfd;
+	char inbuf[INBUFLEN];
 	char *udp_pld;
-	struct iovec iov;
+	struct iovec outiov;
+	struct iovec iniov;
 	struct msghdr outhdr;
 	struct msghdr inhdr;
 	size_t udp_pld_len;
@@ -48,6 +53,7 @@ main (const int argc, const char *argv[])
 	socklen_t outaddr_len;
 	socklen_t remoteaddr_len;
 	ssize_t nsent;
+	ssize_t nrecv;
 
 	/*
 	 * Init vars.
@@ -76,6 +82,25 @@ main (const int argc, const char *argv[])
 		goto inet_pton_err;
 	}
 	remoteaddr.sin_port = htons (REMOTE_PORT);
+
+	outiov.iov_base = udp_pld;
+	outiov.iov_len = udp_pld_len;
+	memset (&outhdr, 0, sizeof(outhdr));
+	outhdr.msg_name = (void *) &remoteaddr;
+	outhdr.msg_namelen = sizeof(remoteaddr);
+	outhdr.msg_iov = &outiov;
+	outhdr.msg_iovlen = 1;
+
+	memset (&inbuf, '\0', sizeof(inbuf));
+
+	iniov.iov_base = inbuf;
+	iniov.iov_len = INBUFLEN;
+	memset (&inhdr, 0, sizeof(inhdr));
+	inhdr.msg_name = (void *)&remoteaddr;
+	inhdr.msg_namelen = sizeof(remoteaddr);
+	inhdr.msg_iov = &iniov;
+	inhdr.msg_iovlen = 1;
+
 
 	/*
 	 * UDP socket creation.
@@ -109,17 +134,6 @@ main (const int argc, const char *argv[])
 	print_info ("IP_RECVERR option set");
 
 	/*
-	 * Fill the iovec and the msghdr.
-	 */
-	iov.iov_base = udp_pld;
-	iov.iov_len = udp_pld_len;
-	memset (&outhdr, 0, sizeof(outhdr));
-	outhdr.msg_name = (void *) &remoteaddr;
-	outhdr.msg_namelen = sizeof(remoteaddr);
-	outhdr.msg_iov = &iov;
-	outhdr.msg_iovlen = 1;
-
-	/*
 	 * Send the datagram.
 	 */
 	do {
@@ -132,19 +146,71 @@ main (const int argc, const char *argv[])
 
 	print_info ("datagram sent to "REMOTE_ADDRESS":"STR(REMOTE_PORT));
 
-
 	/*
-	 * Recv a response or an error via MSG_ERRQUEUE.
+	 * poll for events.
 	 */
-	do {
-		nrecv = recvmsg (outfd, &inhdr, MSG_ERRQUEUE);
-	} while (nrecv == -1 && errno == EINTR);
+	for (;;) {
+		int nready;
+		struct pollfd pfd[1];
+
+		nready = 0;
+		pfd[0].fd = outfd;
+		pfd[0].events = 0 | POLLIN | POLLERR | POLLNVAL;
+
+		nready = poll (pfd, sizeof(pfd), -1);
+		if (nready == -1) {
+			perror ("poll");
+			goto poll_err;
+		}
+		assert (nready != 0);
+
+		/*
+		 * Let's see what happened.
+		 */
+		if (pfd[0].revents & POLLERR) {
+			print_info ("POLLERR, reading error queue...");
+
+			do {
+				nrecv = recvmsg (outfd, &inhdr, MSG_ERRQUEUE);
+			} while (nrecv == -1 && errno == EINTR);
+
+			assert (inhdr.msg_flags & MSG_ERRQUEUE);
+
+			if (nrecv == -1) {
+				perror ("recvmsg MSG_ERRQUEUE");
+				goto recvmsg_err;
+			}
+
+			print_info ("CMSG");
+		} else {
+			assert (pfd[0].revents & POLLIN);
+
+			do {
+				nrecv = recvmsg (outfd, &inhdr, 0);
+			} while (nrecv == -1 && errno == EINTR);
+
+			assert (!(inhdr.msg_flags & MSG_ERRQUEUE));
+
+			if (nrecv == -1) {
+				perror ("recvmsg");
+				goto recvmsg_err;
+			}
+
+			print_info ("Messaggio ricevuto:");
+			printf ("%s", inbuf);
+			fflush (stdout);
+		}
+	}
 
 	/* Happy ending :) */
 	return 0;
 
 
-	/* Errors :( */
+	/*
+	 * Errors :(
+	 */
+poll_err:
+recvmsg_err:
 sendmsg_err:
 setsockopt_err:
 bind_err:
