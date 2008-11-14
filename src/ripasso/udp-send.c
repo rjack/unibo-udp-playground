@@ -199,7 +199,7 @@ main (const int argc, const char *argv[])
 			for (curcmsg = CMSG_FIRSTHDR (&inhdr);
 			     curcmsg != NULL;
 			     curcmsg = CMSG_NXTHDR (&inhdr, curcmsg)) {
-				print_info ("curcmsg");
+				print_info("TODO process CMSG_DATA");
 			}
 		} else {
 			assert (pfd[0].revents & POLLIN);
