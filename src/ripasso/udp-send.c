@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <linux/errqueue.h>
+#include <netinet/in.h>
 #include <netinet/ip.h>
 #include <poll.h>
 #include <stdio.h>
@@ -37,6 +38,23 @@ void
 print_info (const char *msg)
 {
 	printf ("[INFO] %s: %s\n", program_name, msg);
+}
+
+
+size_t
+get_errqueue_size (struct msghdr *msg, size_t len)
+{
+	struct cmsghdr *cmsg;
+	size_t size;
+
+	size = 0;
+	for (cmsg = CMSG_FIRSTHDR (msg);
+	     cmsg != NULL;
+	     cmsg = CMSG_NXTHDR (msg, cmsg)) {
+		cmsg->cmsg_len = CMSG_LEN (len);
+		size += CMSG_SPACE (len);
+	}
+	return size;
 }
 
 
@@ -155,8 +173,13 @@ main (const int argc, const char *argv[])
 	 */
 	for (;;) {
 		int nready;
-		char bufcmsg[CMSG_SPACE(sizeof(struct sock_extended_err))];
+		size_t bufcmsg_len;
+		char *bufcmsg;
 		struct pollfd pfd[1];
+
+		bufcmsg_len = get_errqueue_size (&inhdr, sizeof(struct sock_extended_err));
+		bufcmsg = calloc (bufcmsg_len, sizeof(char));
+		assert (bufcmsg != NULL);
 
 		inhdr.msg_control = &bufcmsg;
 		inhdr.msg_controllen = sizeof(bufcmsg);
