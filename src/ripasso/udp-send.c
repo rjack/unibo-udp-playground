@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
+#include <linux/errqueue.h>
 #include <netinet/ip.h>
 #include <poll.h>
 #include <stdio.h>
@@ -29,6 +30,9 @@ static const char *program_name;
 
 #define     INBUFLEN         100
 
+#define     ARRAYLEN(a)      (sizeof((a))/sizeof(*(a)))
+
+
 void
 print_info (const char *msg)
 {
@@ -48,9 +52,9 @@ main (const int argc, const char *argv[])
 	struct msghdr outhdr;
 	struct msghdr inhdr;
 	size_t udp_pld_len;
-	struct sockaddr_in outaddr;
+	struct sockaddr_in bindaddr;
 	struct sockaddr_in remoteaddr;
-	socklen_t outaddr_len;
+	socklen_t bindaddr_len;
 	socklen_t remoteaddr_len;
 	ssize_t nsent;
 	ssize_t nrecv;
@@ -63,15 +67,15 @@ main (const int argc, const char *argv[])
 	udp_pld = "Ciao, come stai?";
 	udp_pld_len = strlen (udp_pld) + 1;
 
-	outaddr_len = sizeof(outaddr);
-	memset (&outaddr, 0, outaddr_len);
-	outaddr.sin_family = AF_INET;
-	err = inet_pton (AF_INET, BIND_ADDRESS, &outaddr.sin_addr);
+	bindaddr_len = sizeof(bindaddr);
+	memset (&bindaddr, 0, bindaddr_len);
+	bindaddr.sin_family = AF_INET;
+	err = inet_pton (AF_INET, BIND_ADDRESS, &bindaddr.sin_addr);
 	if (err != 1) {
 		perror ("inet_pton BIND_ADDRESS");
 		goto inet_pton_err;
 	}
-	outaddr.sin_port = htons (BIND_PORT);
+	bindaddr.sin_port = htons (BIND_PORT);
 
 	remoteaddr_len = sizeof(remoteaddr);
 	memset (&remoteaddr, 0, remoteaddr_len);
@@ -94,9 +98,9 @@ main (const int argc, const char *argv[])
 	memset (&inbuf, '\0', sizeof(inbuf));
 
 	iniov.iov_base = inbuf;
-	iniov.iov_len = INBUFLEN;
+	iniov.iov_len = sizeof(inbuf);
 	memset (&inhdr, 0, sizeof(inhdr));
-	inhdr.msg_name = (void *)&remoteaddr;
+	inhdr.msg_name = (void *) &remoteaddr;
 	inhdr.msg_namelen = sizeof(remoteaddr);
 	inhdr.msg_iov = &iniov;
 	inhdr.msg_iovlen = 1;
@@ -114,7 +118,7 @@ main (const int argc, const char *argv[])
 	/*
 	 * Bind to a specific interface.
 	 */
-	err = bind (outfd, (struct sockaddr *)&outaddr, outaddr_len);
+	err = bind (outfd, (struct sockaddr *)&bindaddr, bindaddr_len);
 	if (err) {
 		perror ("bind");
 		goto bind_err;
@@ -151,13 +155,19 @@ main (const int argc, const char *argv[])
 	 */
 	for (;;) {
 		int nready;
+		char bufcmsg[CMSG_SPACE(sizeof(struct sock_extended_err))];
 		struct pollfd pfd[1];
+
+		inhdr.msg_control = &bufcmsg;
+		inhdr.msg_controllen = sizeof(bufcmsg);
+
+		memset (&bufcmsg, 0, sizeof(bufcmsg));
 
 		nready = 0;
 		pfd[0].fd = outfd;
-		pfd[0].events = 0 | POLLIN | POLLERR | POLLNVAL;
+		pfd[0].events = 0 | POLLIN | POLLERR;
 
-		nready = poll (pfd, sizeof(pfd), -1);
+		nready = poll (pfd, ARRAYLEN(pfd), -1);
 		if (nready == -1) {
 			perror ("poll");
 			goto poll_err;
@@ -168,20 +178,26 @@ main (const int argc, const char *argv[])
 		 * Let's see what happened.
 		 */
 		if (pfd[0].revents & POLLERR) {
+			struct cmsghdr *curcmsg;
+
 			print_info ("POLLERR, reading error queue...");
 
 			do {
 				nrecv = recvmsg (outfd, &inhdr, MSG_ERRQUEUE);
 			} while (nrecv == -1 && errno == EINTR);
 
-			assert (inhdr.msg_flags & MSG_ERRQUEUE);
-
 			if (nrecv == -1) {
 				perror ("recvmsg MSG_ERRQUEUE");
 				goto recvmsg_err;
 			}
 
-			print_info ("CMSG");
+			assert (inhdr.msg_flags & MSG_ERRQUEUE);
+
+			for (curcmsg = CMSG_FIRSTHDR (&inhdr);
+			     curcmsg != NULL;
+			     curcmsg = CMSG_NXTHDR (&inhdr, curcmsg)) {
+				print_info ("curcmsg");
+			}
 		} else {
 			assert (pfd[0].revents & POLLIN);
 
