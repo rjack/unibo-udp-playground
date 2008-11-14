@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <linux/errqueue.h>
+#include <linux/types.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <poll.h>
